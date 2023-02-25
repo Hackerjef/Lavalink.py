@@ -141,7 +141,7 @@ class DeferredAudioTrack(ABC, AudioTrack):
     for example.
     """
     @abstractmethod
-    async def load(self, client):
+    def load(self, client):
         """|coro|
 
         Retrieves a base64 string that's playable by Lavalink.
@@ -271,7 +271,7 @@ class Source(ABC):
         return hash(self.name)
 
     @abstractmethod
-    async def load_item(self, client, query: str) -> Optional[LoadResult]:
+    def load_item(self, client, query: str) -> Optional[LoadResult]:
         """|coro|
 
         Loads a track with the given query.
@@ -319,14 +319,14 @@ class BasePlayer(ABC):
         self.channel_id: Optional[int] = None
 
     @abstractmethod
-    async def _handle_event(self, event):
+    def _handle_event(self, event):
         raise NotImplementedError
 
     @abstractmethod
-    async def _update_state(self, state: dict):
+    def _update_state(self, state: dict):
         raise NotImplementedError
 
-    async def play_track(self, track: str, start_time: Optional[int] = None, end_time: Optional[int] = None,
+    def play_track(self, track: str, start_time: Optional[int] = None, end_time: Optional[int] = None,
                          no_replace: Optional[bool] = None, volume: Optional[int] = None, pause: Optional[bool] = None):
         """|coro|
 
@@ -389,28 +389,28 @@ class BasePlayer(ABC):
                 raise TypeError('pause must be a bool')
             options['pause'] = pause
 
-        await self.node._send(op='play', guildId=self._internal_id, track=track, **options)
+        self.node._send(op='play', guildId=self._internal_id, track=track, **options)
 
     def cleanup(self):
         pass
 
-    async def destroy(self):
+    def destroy(self):
         """|coro|
 
         Destroys the current player instance.
 
         Shortcut for :func:`PlayerManager.destroy`.
         """
-        await self._lavalink.player_manager.destroy(self.guild_id)
+        self._lavalink.player_manager.destroy(self.guild_id)
 
-    async def _voice_server_update(self, data):
+    def _voice_server_update(self, data):
         self._voice_state.update({
             'event': data
         })
 
-        await self._dispatch_voice_update()
+        self._dispatch_voice_update()
 
-    async def _voice_state_update(self, data):
+    def _voice_state_update(self, data):
         raw_channel_id = data['channel_id']
         self.channel_id = int(raw_channel_id) if raw_channel_id else None
 
@@ -423,14 +423,14 @@ class BasePlayer(ABC):
                 'sessionId': data['session_id']
             })
 
-            await self._dispatch_voice_update()
+            self._dispatch_voice_update()
 
-    async def _dispatch_voice_update(self):
+    def _dispatch_voice_update(self):
         if {'sessionId', 'event'} == self._voice_state.keys():
-            await self.node._send(op='voiceUpdate', guildId=self._internal_id, **self._voice_state)
+            self.node._send(op='voiceUpdate', guildId=self._internal_id, **self._voice_state)
 
     @abstractmethod
-    async def node_unavailable(self):
+    def node_unavailable(self):
         """|coro|
 
         Called when a player's node becomes unavailable.
@@ -439,7 +439,7 @@ class BasePlayer(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def change_node(self, node: 'Node'):
+    def change_node(self, node: 'Node'):
         """|coro|
 
         Called when a node change is requested for the current player instance.
@@ -493,11 +493,11 @@ class DefaultPlayer(BasePlayer):
         .. code:: python
 
             if player.loop == player.LOOP_NONE:
-                await ctx.send('Not looping.')
+                ctx.send('Not looping.')
             elif player.loop == player.LOOP_SINGLE:
-                await ctx.send(f'{player.current.title} is looping.')
+                ctx.send(f'{player.current.title} is looping.')
             elif player.loop == player.LOOP_QUEUE:
-                await ctx.send('This queue never ends!')
+                ctx.send('This queue never ends!')
     filters: Dict[:class:`str`, :class:`Filter`]
         A mapping of str to :class:`Filter`, representing currently active filters.
     queue: List[:class:`AudioTrack`]
@@ -642,7 +642,7 @@ class DefaultPlayer(BasePlayer):
         else:
             self.queue.insert(index, at)
 
-    async def play(self, track: Optional[Union[AudioTrack, DeferredAudioTrack, Dict]] = None, start_time: Optional[int] = 0,
+    def play(self, track: Optional[Union[AudioTrack, DeferredAudioTrack, Dict]] = None, start_time: Optional[int] = 0,
                    end_time: Optional[int] = 0, no_replace: Optional[bool] = False, volume: Optional[int] = None,
                    pause: Optional[bool] = False):
         """|coro|
@@ -704,8 +704,8 @@ class DefaultPlayer(BasePlayer):
 
         if not track:
             if not self.queue:
-                await self.stop()  # Also sets current to None.
-                await self.node._dispatch_event(QueueEndEvent(self))
+                self.stop()  # Also sets current to None.
+                self.node._dispatch_event(QueueEndEvent(self))
                 return
 
             pop_at = randrange(len(self.queue)) if self.shuffle else 0
@@ -727,33 +727,33 @@ class DefaultPlayer(BasePlayer):
                 raise InvalidTrack('Cannot play the AudioTrack as \'track\' is None, and it is not a DeferredAudioTrack!')
 
             try:
-                playable_track = await track.load(self.node._manager._lavalink)
+                playable_track = track.load(self.node._manager._lavalink)
             except LoadError as load_error:
-                await self.node._dispatch_event(TrackLoadFailedEvent(self, track, load_error))
+                self.node._dispatch_event(TrackLoadFailedEvent(self, track, load_error))
 
         if playable_track is None:  # This should only fire when a DeferredAudioTrack fails to yield a base64 track string.
-            await self.node._dispatch_event(TrackLoadFailedEvent(self, track, None))
+            self.node._dispatch_event(TrackLoadFailedEvent(self, track, None))
             return
 
-        await self.play_track(playable_track, start_time, end_time, no_replace, volume, pause)
-        await self.node._dispatch_event(TrackStartEvent(self, track))
+        self.play_track(playable_track, start_time, end_time, no_replace, volume, pause)
+        self.node._dispatch_event(TrackStartEvent(self, track))
         # TODO: Figure out a better solution for the above. Custom player implementations may neglect
         # to dispatch TrackStartEvent leading to confusion and poor user experience.
 
-    async def stop(self):
+    def stop(self):
         """|coro|
 
         Stops the player.
         """
-        await self.node._send(op='stop', guildId=self._internal_id)
+        self.node._send(op='stop', guildId=self._internal_id)
         self.current = None
 
-    async def skip(self):
+    def skip(self):
         """|coro|
 
         Plays the next track in the queue, if any.
         """
-        await self.play()
+        self.play()
 
     def set_repeat(self, repeat: bool):
         """
@@ -802,7 +802,7 @@ class DefaultPlayer(BasePlayer):
         """
         self.shuffle = shuffle
 
-    async def set_pause(self, pause: bool):
+    def set_pause(self, pause: bool):
         """|coro|
 
         Sets the player's paused state.
@@ -813,9 +813,9 @@ class DefaultPlayer(BasePlayer):
             Whether to pause the player or not.
         """
         self.paused = pause
-        await self.node._send(op='pause', guildId=self._internal_id, pause=pause)
+        self.node._send(op='pause', guildId=self._internal_id, pause=pause)
 
-    async def set_volume(self, vol: int):
+    def set_volume(self, vol: int):
         """|coro|
 
         Sets the player's volume
@@ -830,9 +830,9 @@ class DefaultPlayer(BasePlayer):
             The new volume level.
         """
         self.volume = max(min(vol, 1000), 0)
-        await self.node._send(op='volume', guildId=self._internal_id, volume=self.volume)
+        self.node._send(op='volume', guildId=self._internal_id, volume=self.volume)
 
-    async def seek(self, position: int):
+    def seek(self, position: int):
         """|coro|
 
         Seeks to a given position in the track.
@@ -842,9 +842,9 @@ class DefaultPlayer(BasePlayer):
         position: :class:`int`
             The new position to seek to in milliseconds.
         """
-        await self.node._send(op='seek', guildId=self._internal_id, position=position)
+        self.node._send(op='seek', guildId=self._internal_id, position=position)
 
-    async def set_filter(self, _filter: Filter):
+    def set_filter(self, _filter: Filter):
         """|coro|
 
         Applies the corresponding filter within Lavalink.
@@ -873,9 +873,9 @@ class DefaultPlayer(BasePlayer):
 
         filter_name = type(_filter).__name__.lower()
         self.filters[filter_name] = _filter
-        await self._apply_filters()
+        self._apply_filters()
 
-    async def update_filter(self, _filter: Filter, **kwargs):
+    def update_filter(self, _filter: Filter, **kwargs):
         """|coro|
 
         Updates a filter using the upsert method;
@@ -917,7 +917,7 @@ class DefaultPlayer(BasePlayer):
         filter_instance = self.filters.get(filter_name, _filter())
         filter_instance.update(**kwargs)
         self.filters[filter_name] = filter_instance
-        await self._apply_filters()
+        self._apply_filters()
 
     def get_filter(self, _filter: Union[Filter, str]):
         """
@@ -953,7 +953,7 @@ class DefaultPlayer(BasePlayer):
 
         return self.filters.get(filter_name.lower(), None)
 
-    async def remove_filter(self, _filter: Union[Filter, str]):
+    def remove_filter(self, _filter: Union[Filter, str]):
         """|coro|
 
         Removes a filter from the player, undoing any effects applied to the audio.
@@ -985,17 +985,17 @@ class DefaultPlayer(BasePlayer):
 
         if fn_lowered in self.filters:
             self.filters.pop(fn_lowered)
-            await self._apply_filters()
+            self._apply_filters()
 
-    async def clear_filters(self):
+    def clear_filters(self):
         """|coro|
 
         Clears all currently-enabled filters.
         """
         self.filters.clear()
-        await self._apply_filters()
+        self._apply_filters()
 
-    async def set_gain(self, band: int, gain: float = 0.0):
+    def set_gain(self, band: int, gain: float = 0.0):
         """|coro|
 
         Sets the equalizer band gain to the given amount.
@@ -1010,9 +1010,9 @@ class DefaultPlayer(BasePlayer):
         gain: Optional[:class:`float`]
             A float representing gain of a band (-0.25 to 1.00). Defaults to 0.0.
         """
-        await self.set_gains((band, gain))
+        self.set_gains((band, gain))
 
-    async def set_gains(self, *bands):
+    def set_gains(self, *bands):
         """|coro|
 
         Modifies the player's equalizer settings.
@@ -1027,9 +1027,9 @@ class DefaultPlayer(BasePlayer):
         """
         equalizer = Equalizer()
         equalizer.update(bands=bands)
-        await self.set_filter(equalizer)
+        self.set_filter(equalizer)
 
-    async def reset_equalizer(self):
+    def reset_equalizer(self):
         """|coro|
 
         Resets equalizer to default values.
@@ -1037,17 +1037,17 @@ class DefaultPlayer(BasePlayer):
         .. deprecated:: 4.0.0
             Use :func:`remove_filter` to remove the :class:`Equalizer` filter instead.
         """
-        await self.remove_filter(Equalizer)
+        self.remove_filter(Equalizer)
 
-    async def _apply_filters(self):
+    def _apply_filters(self):
         payload = {}
 
         for _filter in self.filters.values():
             payload.update(_filter.serialize())
 
-        await self.node._send(op='filters', guildId=self._internal_id, **payload)
+        self.node._send(op='filters', guildId=self._internal_id, **payload)
 
-    async def _handle_event(self, event):
+    def _handle_event(self, event):
         """
         Handles the given event as necessary.
 
@@ -1058,9 +1058,9 @@ class DefaultPlayer(BasePlayer):
         """
         if isinstance(event, (TrackStuckEvent, TrackExceptionEvent)) or \
                 isinstance(event, TrackEndEvent) and event.reason == 'FINISHED':
-            await self.play()
+            self.play()
 
-    async def _update_state(self, state: dict):
+    def _update_state(self, state: dict):
         """
         Updates the position of the player.
 
@@ -1073,7 +1073,7 @@ class DefaultPlayer(BasePlayer):
         self._last_position = state.get('position', 0)
         self.position_timestamp = state.get('time', 0)
 
-    async def node_unavailable(self):
+    def node_unavailable(self):
         """|coro|
 
         Called when a player's node becomes unavailable.
@@ -1081,7 +1081,7 @@ class DefaultPlayer(BasePlayer):
         """
         self._internal_pause = True
 
-    async def change_node(self, node):
+    def change_node(self, node):
         """|coro|
 
         Changes the player's node
@@ -1092,35 +1092,35 @@ class DefaultPlayer(BasePlayer):
             The node the player is changed to.
         """
         if self.node.available:
-            await self.node._send(op='destroy', guildId=self._internal_id)
+            self.node._send(op='destroy', guildId=self._internal_id)
 
         old_node = self.node
         self.node = node
 
         if self._voice_state:
-            await self._dispatch_voice_update()
+            self._dispatch_voice_update()
 
         if self.current:
             playable_track = self.current.track
 
             if isinstance(self.current, DeferredAudioTrack) and playable_track is None:
-                playable_track = await self.current.load(self.node._manager._lavalink)
+                playable_track = self.current.load(self.node._manager._lavalink)
 
-            await self.node._send(op='play', guildId=self._internal_id, track=playable_track, startTime=self.position)
+            self.node._send(op='play', guildId=self._internal_id, track=playable_track, startTime=self.position)
             self._last_update = time() * 1000
 
             if self.paused:
-                await self.node._send(op='pause', guildId=self._internal_id, pause=self.paused)
+                self.node._send(op='pause', guildId=self._internal_id, pause=self.paused)
 
         self._internal_pause = False
 
         if self.volume != 100:
-            await self.node._send(op='volume', guildId=self._internal_id, volume=self.volume)
+            self.node._send(op='volume', guildId=self._internal_id, volume=self.volume)
 
         if self.filters:
-            await self._apply_filters()
+            self._apply_filters()
 
-        await self.node._dispatch_event(NodeChangedEvent(self, old_node, node))
+        self.node._dispatch_event(NodeChangedEvent(self, old_node, node))
 
     def __repr__(self):
         return '<DefaultPlayer volume={0.volume} current={0.current}>'.format(self)

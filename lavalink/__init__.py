@@ -6,6 +6,8 @@ __license__ = 'MIT'
 __copyright__ = 'Copyright 2017-present Devoxin'
 __version__ = '4.0.6'
 
+from gevent import monkey
+monkey.patch_all()
 
 import inspect
 import logging

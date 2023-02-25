@@ -114,12 +114,12 @@ class Node:
         """ Returns a 'base' URI pointing to the node's address and port, also factoring in SSL. """
         return '{}://{}:{}'.format('https' if self.ssl else 'http', self.host, self.port)
 
-    async def destroy(self):
+    def destroy(self):
         """|coro|
 
         Closes the WebSocket connection for this node. No further connection attempts will be made.
         """
-        await self._ws.destroy()
+        self._ws.destroy()
 
     async def get_tracks(self, query: str, check_local: bool = False) -> LoadResult:
         """|coro|
@@ -137,9 +137,9 @@ class Node:
         -------
         :class:`LoadResult`
         """
-        return await self._lavalink.get_tracks(query, self, check_local)
+        return self._lavalink.get_tracks(query, self, check_local)
 
-    async def routeplanner_status(self):
+    def routeplanner_status(self):
         """|coro|
 
         Retrieves the status of the target node's routeplanner.
@@ -149,10 +149,9 @@ class Node:
         :class:`dict`
             A dict representing the routeplanner information.
         """
-        return await self._lavalink._get_request('{}/routeplanner/status'.format(self.http_uri),
-                                                 headers={'Authorization': self.password})
+        return self._lavalink._get_request('{}/routeplanner/status'.format(self.http_uri), headers={'Authorization': self.password})
 
-    async def routeplanner_free_address(self, address: str) -> bool:
+    def routeplanner_free_address(self, address: str) -> bool:
         """|coro|
 
         Frees up the provided IP address in the target node's routeplanner.
@@ -167,11 +166,9 @@ class Node:
         :class:`bool`
             True if the address was freed, False otherwise.
         """
-        return await self._lavalink._post_request('{}/routeplanner/free/address'.format(self.http_uri),
-                                                  json={'address': address},
-                                                  headers={'Authorization': self.password})
+        return self._lavalink._post_request('{}/routeplanner/free/address'.format(self.http_uri), json={'address': address}, headers={'Authorization': self.password})
 
-    async def routeplanner_free_all_failing(self) -> bool:
+    def routeplanner_free_all_failing(self) -> bool:
         """|coro|
 
         Frees up all IP addresses in the target node that have been marked as failing.
@@ -181,10 +178,9 @@ class Node:
         :class:`bool`
             True if all failing addresses were freed, False otherwise.
         """
-        return await self._lavalink._post_request('{}/routeplanner/free/all'.format(self.http_uri),
-                                                  headers={'Authorization': self.password})
+        return self._lavalink._post_request('{}/routeplanner/free/all'.format(self.http_uri), headers={'Authorization': self.password})
 
-    async def get_plugins(self) -> List[Plugin]:
+    def get_plugins(self) -> List[Plugin]:
         """|coro|
 
         Retrieves a list of plugins active on this node.
@@ -194,11 +190,10 @@ class Node:
         List[:class:`Plugin`]
             A list of active plugins.
         """
-        data = await self._lavalink._get_request('{}/plugins'.format(self.http_uri),
-                                                 headers={'Authorization': self.password})
+        data = await self._lavalink._get_request('{}/plugins'.format(self.http_uri), headers={'Authorization': self.password})
         return [Plugin(plugin) for plugin in data]
 
-    async def _dispatch_event(self, event: Event):
+    def _dispatch_event(self, event: Event):
         """|coro|
 
         Dispatches the given event to all registered hooks.
@@ -208,9 +203,9 @@ class Node:
         event: :class:`Event`
             The event to dispatch to the hooks.
         """
-        await self._lavalink._dispatch_event(event)
+        self._lavalink._dispatch_event(event)
 
-    async def _send(self, **data):
+    def _send(self, **data):
         """|coro|
 
         Sends the passed data to the node via the websocket connection.
@@ -220,7 +215,7 @@ class Node:
         data: class:`any`
             The dict to send to Lavalink.
         """
-        await self._ws._send(**data)
+        self._ws._send(**data)
 
     def __repr__(self):
         return '<Node name={0.name} region={0.region}>'.format(self)

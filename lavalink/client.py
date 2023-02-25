@@ -21,15 +21,18 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
-import asyncio
+from gevent import monkey
+monkey.patch_all()
+
+import gevent
+import requests
+
 import itertools
 import logging
 import random
 from collections import defaultdict
 from inspect import getmembers, ismethod
 from typing import Set, Union
-
-import aiohttp
 
 from .errors import AuthenticationError, NodeError
 from .events import Event
@@ -82,8 +85,7 @@ class Client:
     """
     _event_hooks = defaultdict(list)
 
-    def __init__(self, user_id: Union[int, str], player=DefaultPlayer, regions: dict = None,
-                 connect_back: bool = False):
+    def __init__(self, user_id: Union[int, str], player=DefaultPlayer, regions: dict = None, connect_back: bool = False):
         if not isinstance(user_id, (str, int)) or isinstance(user_id, bool):
             # bool has special handling because it subclasses `int`, so will return True for the first isinstance check.
             raise TypeError('user_id must be either an int or str (not {}). If the type is None, '
@@ -91,7 +93,7 @@ class Client:
                             'the Lavalink client. Alternatively, you can hardcode your user ID.'
                             .format(user_id))
 
-        self._session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30))
+        self._session = requests.Session()
         self._user_id: str = str(user_id)
         self._connect_back: bool = connect_back
         self.node_manager: NodeManager = NodeManager(self, regions)
@@ -206,7 +208,7 @@ class Client:
         self.node_manager.add_node(host, port, password, region, resume_key, resume_timeout, name, reconnect_attempts,
                                    filters, ssl)
 
-    async def get_tracks(self, query: str, node: Node = None, check_local: bool = False) -> LoadResult:
+    def get_tracks(self, query: str, node: Node = None, check_local: bool = False) -> LoadResult:
         """|coro|
 
         Retrieves a list of results pertaining to the provided query.
@@ -235,7 +237,7 @@ class Client:
         """
         if check_local:
             for source in self.sources:
-                load_result = await source.load_item(self, query)
+                load_result = source.load_item(self, query)
 
                 if load_result:
                     return load_result
@@ -243,12 +245,10 @@ class Client:
         if not self.node_manager.available_nodes:
             raise NodeError('No available nodes!')
         node = node or random.choice(self.node_manager.available_nodes)
-        res = await self._get_request('{}/loadtracks'.format(node.http_uri),
-                                      params={'identifier': query},
-                                      headers={'Authorization': node.password})
+        res = self._get_request('{}/loadtracks'.format(node.http_uri), params={'identifier': query}, headers={'Authorization': node.password})
         return LoadResult.from_dict(res)
 
-    async def decode_track(self, track: str, node: Node = None):
+    def decode_track(self, track: str, node: Node = None):
         """|coro|
 
         Decodes a base64-encoded track string into a dict.
@@ -268,11 +268,9 @@ class Client:
         if not self.node_manager.available_nodes:
             raise NodeError('No available nodes!')
         node = node or random.choice(self.node_manager.available_nodes)
-        return await self._get_request('{}/decodetrack'.format(node.http_uri),
-                                       params={'track': track},
-                                       headers={'Authorization': node.password})
+        return self._get_request('{}/decodetrack'.format(node.http_uri), params={'track': track}, headers={'Authorization': node.password})
 
-    async def decode_tracks(self, tracks: list, node: Node = None):
+    def decode_tracks(self, tracks: list, node: Node = None):
         """|coro|
 
         Decodes a list of base64-encoded track strings into a dict.
@@ -293,11 +291,9 @@ class Client:
             raise NodeError('No available nodes!')
         node = node or random.choice(self.node_manager.available_nodes)
 
-        return await self._post_request('{}/decodetracks'.format(node.http_uri),
-                                        json=tracks,
-                                        headers={'Authorization': node.password})
+        return self._post_request('{}/decodetracks'.format(node.http_uri), json=tracks, headers={'Authorization': node.password})
 
-    async def voice_update_handler(self, data):
+    def voice_update_handler(self, data):
         """|coro|
 
         This function intercepts websocket data from your Discord library and
@@ -323,7 +319,7 @@ class Client:
             player = self.player_manager.get(guild_id)
 
             if player:
-                await player._voice_server_update(data['d'])
+                player._voice_server_update(data['d'])
         elif data['t'] == 'VOICE_STATE_UPDATE':
             if int(data['d']['user_id']) != int(self._user_id):
                 return
@@ -332,34 +328,31 @@ class Client:
             player = self.player_manager.get(guild_id)
 
             if player:
-                await player._voice_state_update(data['d'])
+                player._voice_state_update(data['d'])
 
-    async def _get_request(self, url, **kwargs):
-        async with self._session.get(url, **kwargs) as res:
+    def _get_request(self, url, **kwargs):
+        with self._session.get(url) as res:
             if res.status == 401 or res.status == 403:
                 raise AuthenticationError
 
             if res.status == 200:
-                return await res.json()
+                return res.json()
 
-            raise NodeError('An invalid response was received from the node: code={}, body={}'
-                            .format(res.status, await res.text()))
+            raise NodeError('An invalid response was received from the node: code={}, body={}'.format(res.status, res.text()))
 
-    async def _post_request(self, url, **kwargs):
-        async with self._session.post(url, **kwargs) as res:
+    def _post_request(self, url, **kwargs):
+        with self._session.post(url, **kwargs) as res:
             if res.status == 401 or res.status == 403:
                 raise AuthenticationError
 
             if 'json' in kwargs:
                 if res.status == 200:
-                    return await res.json()
+                    return res.json()
 
-                raise NodeError('An invalid response was received from the node: code={}, body={}'
-                                .format(res.status, await res.text()))
-
+                raise NodeError('An invalid response was received from the node: code={}, body={}'.format(res.status, res.text()))
             return res.status == 204
 
-    async def _dispatch_event(self, event: Event):
+    def _dispatch_event(self, event: Event):
         """|coro|
 
         Dispatches the given event to all registered hooks.
@@ -375,9 +368,9 @@ class Client:
         if not generic_hooks and not targeted_hooks:
             return
 
-        async def _hook_wrapper(hook, event):
+        def _hook_wrapper(hook, event):
             try:
-                await hook(event)
+                hook(event)
             except:  # noqa: E722 pylint: disable=bare-except
                 _log.exception('Event hook \'%s\' encountered an exception!', hook.__name__)
                 #  According to https://stackoverflow.com/questions/5191830/how-do-i-log-a-python-error-with-debug-information
@@ -385,7 +378,7 @@ class Client:
                 #  clarity.
 
         tasks = [_hook_wrapper(hook, event) for hook in itertools.chain(generic_hooks, targeted_hooks)]
-        await asyncio.gather(*tasks)
+        gevent.joinall(tasks)
 
         _log.debug('Dispatched \'%s\' to all registered hooks', type(event).__name__)
 

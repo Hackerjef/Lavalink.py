@@ -197,7 +197,7 @@ class NodeManager:
         best_node = min(nodes, key=lambda node: node.penalty)
         return best_node
 
-    async def _node_connect(self, node: Node):
+    def _node_connect(self, node: Node):
         """
         Called when a node is connected from Lavalink.
 
@@ -207,19 +207,19 @@ class NodeManager:
             The node that has just connected.
         """
         for player in self._player_queue:
-            await player.change_node(node)
+            player.change_node(node)
             original_node_name = player._original_node.name if player._original_node else '[no node]'
             _log.debug('Moved player %d from node \'%s\' to node \'%s\'', player.guild_id, original_node_name, node.name)
 
         if self._lavalink._connect_back:
             for player in node._original_players:
-                await player.change_node(node)
+                player.change_node(node)
                 player._original_node = None
 
         self._player_queue.clear()
-        await self._lavalink._dispatch_event(NodeConnectedEvent(node))
+        self._lavalink._dispatch_event(NodeConnectedEvent(node))
 
-    async def _node_disconnect(self, node: Node, code: int, reason: str):
+    def _node_disconnect(self, node: Node, code: int, reason: str):
         """
         Called when a node is disconnected from Lavalink.
 
@@ -234,11 +234,11 @@ class NodeManager:
         """
         for player in node.players:
             try:
-                await player.node_unavailable()
+                player.node_unavailable()
             except:  # noqa: E722 pylint: disable=bare-except
                 _log.exception('An error occurred whilst calling player.node_unavailable()')
 
-        await self._lavalink._dispatch_event(NodeDisconnectedEvent(node, code, reason))
+        self._lavalink._dispatch_event(NodeDisconnectedEvent(node, code, reason))
 
         best_node = self.find_ideal_node(node.region)
 
@@ -248,7 +248,7 @@ class NodeManager:
             return
 
         for player in node.players:
-            await player.change_node(best_node)
+            player.change_node(best_node)
 
             if self._lavalink._connect_back:
                 player._original_node = node

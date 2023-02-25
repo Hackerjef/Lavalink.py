@@ -166,7 +166,7 @@ class PlayerManager:
         _log.debug('Created player with GuildId %d on node \'%s\'', id_int, best_node.name)
         return player
 
-    async def destroy(self, guild_id: int):
+    def destroy(self, guild_id: int):
         """|coro|
 
         Removes a player from cache, and also Lavalink if applicable.
@@ -190,6 +190,6 @@ class PlayerManager:
         player.cleanup()
 
         if player.node:
-            await player.node._send(op='destroy', guildId=player._internal_id)
+            player.node._send(op='destroy', guildId=player._internal_id)
 
         _log.debug('Destroyed player with GuildId %d on node \'%s\'', guild_id, player.node.name if player.node else 'UNASSIGNED')
